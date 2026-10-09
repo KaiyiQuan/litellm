@@ -343,9 +343,13 @@ class TestLiteLLMCompletionResponsesConfig:
                 "rs_"
             ), f"Expected ID to start with 'rs_', got: {reasoning_item.id}"
         assert reasoning_item.status == "completed"
-        assert reasoning_item.role == "assistant"
+        # Reasoning items must not carry message-only fields (role/phase) and
+        # must expose the spec-required `summary` array (#45552).
+        assert not hasattr(reasoning_item, "role")
+        assert not hasattr(reasoning_item, "phase")
+        assert reasoning_item.summary == []
         assert len(reasoning_item.content) == 1
-        assert reasoning_item.content[0].type == "output_text"
+        assert reasoning_item.content[0].type == "reasoning_text"
         assert "step by step" in reasoning_item.content[0].text
         assert "42" in reasoning_item.content[0].text
 
@@ -5352,3 +5356,95 @@ async def test_bridge_rejects_untranslatable_tool_choice_with_a_400(stream: bool
         )
     assert exc_info.value.status_code == 400
     assert "tool_choice={'type': 'file_search'}" in str(exc_info.value)
+
+
+class TestReasoningOutputItemSchemaCompat:
+    """The bridge's reasoning output item must satisfy the OpenAI Responses
+    schema: `summary` present, `reasoning_text` content, no message-only
+    fields (role/phase). Regression for #45552."""
+
+    def _transform(self, *, reasoning_content: str):
+        chat_completion_response = ModelResponse(
+            id="test-response-id",
+            created=1234567890,
+            model="test-model",
+            object="chat.completion",
+            choices=[
+                Choices(
+                    finish_reason="stop",
+                    index=0,
+                    message=Message(
+                        content="The answer is 42.",
+                        role="assistant",
+                        reasoning_content=reasoning_content,
+                    ),
+                )
+            ],
+        )
+        return LiteLLMCompletionResponsesConfig.transform_chat_completion_response_to_responses_api_response(
+            request_input="What is the meaning of life?",
+            responses_api_request={},
+            chat_completion_response=chat_completion_response,
+        )
+
+    def test_reasoning_item_parses_as_openai_response_reasoning_item(self):
+        from openai.types.responses import ResponseReasoningItem
+
+        responses_api_response = self._transform(
+            reasoning_content="Let me think about this step by step."
+        )
+        reasoning_items = [i for i in responses_api_response.output if i.type == "reasoning"]
+        assert len(reasoning_items) == 1
+        item = reasoning_items[0]
+
+        assert not hasattr(item, "role")
+        assert not hasattr(item, "phase")
+        assert item.summary == []
+        assert item.content[0].type == "reasoning_text"
+        assert item.content[0].text == "Let me think about this step by step."
+
+        # The item dict must validate as the OpenAI SDK's ResponseReasoningItem.
+        parsed = ResponseReasoningItem.model_validate(item.model_dump(mode="json"))
+        assert parsed.summary == []
+        assert parsed.content[0].type == "reasoning_text"
+
+    def test_signature_only_thinking_block_yields_spec_valid_reasoning_item(self):
+        """A signature-only thinking block (empty thinking payload) must still
+        produce a spec-valid reasoning item (summary=[] and empty content),
+        not a schema violation."""
+        from openai.types.responses import ResponseReasoningItem
+
+        response = ModelResponse(
+            id="test-id",
+            created=1234567890,
+            model="test-model",
+            object="chat.completion",
+            choices=[
+                Choices(
+                    finish_reason="stop",
+                    index=0,
+                    message=Message(
+                        content="10",
+                        role="assistant",
+                        reasoning_content="",
+                        thinking_blocks=[
+                            {"type": "thinking", "thinking": "", "signature": "signature-payload"}
+                        ],
+                    ),
+                )
+            ],
+        )
+
+        responses_api_response = LiteLLMCompletionResponsesConfig.transform_chat_completion_response_to_responses_api_response(
+            request_input="Test input",
+            responses_api_request={},
+            chat_completion_response=response,
+        )
+        reasoning_items = [i for i in responses_api_response.output if i.type == "reasoning"]
+        assert len(reasoning_items) == 1
+        item = reasoning_items[0]
+        assert not hasattr(item, "role")
+        assert not hasattr(item, "phase")
+        parsed = ResponseReasoningItem.model_validate(item.model_dump(mode="json"))
+        assert parsed.summary == []
+        assert parsed.content == []

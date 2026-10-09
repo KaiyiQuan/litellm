@@ -90,6 +90,8 @@ from litellm.types.responses.main import (
     OutputFunctionToolCall,
     OutputImageGenerationCall,
     OutputText,
+    ReasoningContent,
+    ResponseReasoningItem,
 )
 from litellm.types.utils import (
     ChatCompletionAnnotation,
@@ -2526,7 +2528,8 @@ class LiteLLMCompletionResponsesConfig:
         choices: list[Choices],
         responses_api_request: ResponsesAPIOptionalRequestParams | None = None,
     ) -> list[
-        GenericResponseOutputItem
+        ResponseReasoningItem
+        | GenericResponseOutputItem
         | OutputCodeInterpreterCall
         | OutputFunctionToolCall
         | OutputImageGenerationCall
@@ -2535,7 +2538,8 @@ class LiteLLMCompletionResponsesConfig:
         | CustomToolCallOutputItem
     ]:
         responses_output: list[
-            GenericResponseOutputItem
+            ResponseReasoningItem
+            | GenericResponseOutputItem
             | OutputCodeInterpreterCall
             | OutputFunctionToolCall
             | OutputImageGenerationCall
@@ -2618,7 +2622,7 @@ class LiteLLMCompletionResponsesConfig:
     def _extract_reasoning_output_items(
         chat_completion_response: ModelResponse,
         choices: list[Choices],
-    ) -> list[GenericResponseOutputItem]:
+    ) -> list[ResponseReasoningItem]:
         for choice in choices:
             if hasattr(choice, "message") and choice.message:
                 message = choice.message
@@ -2627,18 +2631,17 @@ class LiteLLMCompletionResponsesConfig:
                 if reasoning_content or encrypted_content:
                     # Only check the first choice for reasoning content
                     return [
-                        GenericResponseOutputItem(
+                        ResponseReasoningItem(
                             type="reasoning",
                             id=mint_reasoning_item_id(),
                             status=LiteLLMCompletionResponsesConfig._map_chat_completion_finish_reason_to_responses_status(
                                 choice.finish_reason
                             ),
-                            role="assistant",
+                            summary=[],
                             content=[
-                                OutputText(
-                                    type="output_text",
+                                ReasoningContent(
+                                    type="reasoning_text",
                                     text=text,
-                                    annotations=[],
                                 )
                                 for text in (reasoning_content,)
                                 if text

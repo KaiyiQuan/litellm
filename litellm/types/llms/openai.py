@@ -86,6 +86,7 @@ from litellm.types.llms.base import BaseLiteLLMOpenAIResponseObject, LiteLLMBase
 from litellm.types.responses.main import (
     CustomToolCallOutputItem,
     GenericResponseOutputItem,
+    ResponseReasoningItem,
     OutputCodeInterpreterCall,
     OutputFunctionToolCall,
     OutputImageGenerationCall,
@@ -1424,7 +1425,8 @@ class ResponsesAPIResponse(BaseLiteLLMOpenAIResponseObject):
     output: (
         list[ResponseOutputItem | dict]
         | list[
-            GenericResponseOutputItem
+            ResponseReasoningItem
+            | GenericResponseOutputItem
             | OutputCodeInterpreterCall
             | OutputFunctionToolCall
             | OutputImageGenerationCall

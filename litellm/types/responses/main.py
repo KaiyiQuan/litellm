@@ -133,6 +133,46 @@ class CustomToolCallOutputItem(BaseLiteLLMOpenAIResponseObject):
     status: Literal["in_progress", "completed", "incomplete"] | None = None
 
 
+class ResponseReasoningItemSummary(BaseLiteLLMOpenAIResponseObject):
+    """A summary text from the model (OpenAI Responses spec: ``summary`` on reasoning items)."""
+
+    text: str
+    """A summary of the reasoning output from the model so far."""
+
+    type: Literal["summary_text"]
+    """The type of the object. Always `summary_text`."""
+
+
+class ReasoningContent(BaseLiteLLMOpenAIResponseObject):
+    """Reasoning text content part of a reasoning output item."""
+
+    type: Literal["reasoning_text"]
+    """The type of the reasoning text. Always `reasoning_text`."""
+
+    text: str
+    """The reasoning text content."""
+
+
+class ResponseReasoningItem(BaseLiteLLMOpenAIResponseObject):
+    """A reasoning (chain-of-thought) output item, matching the OpenAI Responses spec.
+
+    Unlike a message item, a reasoning item carries a ``summary`` array (``[]`` when
+    there is nothing to summarize), ``reasoning_text`` content parts, and no
+    ``role``/``phase`` fields.
+    """
+
+    type: Literal["reasoning"]
+    """The type of the object. Always `reasoning`."""
+
+    id: str
+    status: str  # "completed", "in_progress", etc.
+    summary: list[ResponseReasoningItemSummary]
+    """Reasoning summary content."""
+
+    content: list[ReasoningContent]
+    encrypted_content: str | None = None
+
+
 class GenericResponseOutputItem(BaseLiteLLMOpenAIResponseObject):
     """
     Generic response API output item
